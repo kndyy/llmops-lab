@@ -1,0 +1,73 @@
+name: LLMOps Pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+  LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.groq.com/openai/v1' }}
+  LLM_MODEL: ${{ vars.LLM_MODEL || 'qwen/qwen3.8-27b' }}
+
+jobs:
+  test:
+    name: Preparación · contrato y golden set
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+        env:
+          LLM_API_KEY: ""
+
+  eval:
+    name: Evaluación · eval y gate
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      # El juez no viene del PR: se toma de main. Un cambio a los umbrales, al golden
+      # set o al evaluador no tiene efecto hasta que su dueño lo aprueba y se fusiona.
+      - name: Tomar el juez desde main
+        if: github.event_name == 'pull_request'
+        run: |
+          for item in gate data/golden.jsonl src/evaluate.py src/gate.py; do
+            if git cat-file -e "origin/${{ github.base_ref }}:$item" 2>/dev/null; then
+              git checkout "origin/${{ github.base_ref }}" -- "$item"
+            else
+              echo "::warning::$item todavía no existe en ${{ github.base_ref }}; se usa el del PR"
+            fi
+          done
+          git status --short
+
+      - name: Evaluar
+        run: python -m src.evaluate --no-mlflow
+
+      - name: Reporte en el resumen del job
+        if: always()
+        run: cat reports/eval.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true  # sin cuota de artifacts el gate corre igual; el reporte ya está en el resumen
+        with:
+          name: eval-report
+          path: reports/
+          retention-days: 7
+
+      - name: Gate
+        run: python -m src.gate

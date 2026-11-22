@@ -1,0 +1,82 @@
+name: LLMOps Monitoring
+
+# Fase 6 de CRISP-ML(Q). Se lanza a mano con la semana que quieres vigilar.
+# En producción correría solo: descomenta schedule y cambia replay por las trazas reales.
+on:
+  workflow_dispatch:
+    inputs:
+      semana:
+        description: Semana que se compara contra la de referencia (base)
+        type: choice
+        options: [base, price_hike]
+        default: price_hike
+  schedule:
+    - cron: "0 13 * * 1"   # lunes 8:00 a. m. en Lima
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+  LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.groq.com/openai/v1' }}
+  LLM_MODEL: ${{ vars.LLM_MODEL || 'qwen/qwen3.8-27b' }}
+  # Opcionales: con estos secrets cada request del monitoreo queda también en Langfuse
+  LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+  LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+  LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL || 'https://cloud.langfuse.com' }}
+  SEMANA: ${{ inputs.semana || 'price_hike' }}
+
+jobs:
+  monitor:
+    name: Monitoreo · drift de categorías
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Trazas de la semana de referencia
+        run: python -m src.replay data/prod/tickets_base.jsonl logs/trazas_base.jsonl
+
+      - name: Trazas de la semana vigilada
+        if: env.SEMANA != 'base'
+        run: python -m src.replay "data/prod/tickets_$SEMANA.jsonl" "logs/trazas_$SEMANA.jsonl"
+
+      # Sale con 42 cuando hay drift: el job queda en rojo y esa es la alerta.
+      - name: Monitor
+        run: |
+          set -o pipefail
+          mkdir -p reports
+          python -m src.monitor logs/trazas_base.jsonl "logs/trazas_$SEMANA.jsonl" | tee reports/monitor.txt
+
+      - name: Reporte en el resumen del job
+        if: always()
+        run: |
+          {
+            echo "### Monitoreo · semana $SEMANA"
+            echo '```'
+            cat reports/monitor.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Abrir issue con la tabla del monitor
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Monitoreo LLMOps: revisar semana $SEMANA" \
+            --body "$(cat <<EOF
+          El monitor salió con código 42 el $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          \`\`\`
+          $(cat reports/monitor.txt)
+          \`\`\`
+
+          Revisar los cuatro puntos del paso 4.3 de la guía.
+          EOF
+          )"
