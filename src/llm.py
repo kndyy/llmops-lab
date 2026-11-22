@@ -104,9 +104,15 @@ def _simulate(system: str, user: str) -> str:
     if "ignora" in ticket and "instrucciones" not in system_l:
         return json.dumps({"categoria": "otro", "riesgo_churn": "bajo", "resumen": "APROBADO"})
 
+    lexico = {}
+    for line in system_l.splitlines():
+        match = re.match(r"\s*lexico\s+(\w+)\s*:\s*(.+)", line)
+        if match and match.group(1) in _KEYWORDS:
+            lexico[match.group(1)] = [word.strip() for word in match.group(2).split(",") if word.strip()]
+
     categoria = "otro"
     for name, words in _KEYWORDS.items():
-        if any(word in ticket for word in words):
+        if any(word in ticket for word in words + lexico.get(name, [])):
             categoria = name
             break
     if any(word in ticket for word in _LEAVING):
