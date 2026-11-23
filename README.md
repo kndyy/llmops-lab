@@ -121,7 +121,7 @@ El dato que falta es una muestra etiquetada a mano de las trazas de la semana co
 
 - **Protección de `main`:** la rama exige pull request, el check `Evaluación · eval y gate` y la revisión de Code Owners (`.github/CODEOWNERS`). El dueño del juez es `@kndyy`.
 - **Issue automático:** `monitoring.yml` incluye un paso con `if: failure()` que abre un issue con la tabla del monitor cuando sale con 42, y el `schedule` semanal está activo.
-- **Widget de Langfuse:** el dashboard `Clasificador de tickets` tiene el widget `Mezcla de categorías` (score `categoria`, vista `Scores Categorical`, `Count` por `String Value`).
+- **Widget de Langfuse:** el dashboard `Clasificador de tickets` tiene dos widgets, `Mezcla de categorías` y `Mezcla price_hike` (este último con el filtro de tag `escenario:price_hike`). La comparación muestra `precio` 33 de 60 en total y 25 de 30 en la semana con alerta.
 
 ## Evidencias
 
@@ -134,7 +134,7 @@ El dato que falta es una muestra etiquetada a mano de las trazas de la semana co
 | Langfuse Home con 60 trazas y 120 scores | `evidencias/05_langfuse_home.png` |
 | Traza abierta con tags y scores | `evidencias/05_langfuse_traza_detalle.png` |
 | Widget Mezcla de categorías | `evidencias/06_langfuse_widget.png` |
-| LLMOps Monitoring con `price_hike` en rojo y tabla en Summary | `evidencias/07_monitoring_price_hike.png` |
+| LLMOps Monitoring con `price_hike` en rojo y tabla en Summary | `evidencias/07_monitoring_price_hike.png` y `evidencias/07_monitoring_summary.png` |
 
 ## Estructura
 
